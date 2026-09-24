@@ -696,6 +696,11 @@ function readInitialWordWrapSetting(): boolean {
   return getClientSettings().wordWrap;
 }
 
+/**
+ * Renders a markdown table with a copy-as-Markdown/CSV footer. Inside a
+ * `.chat-markdown-wide-tables` root the frame can grow past the reading
+ * column (see index.css); otherwise it scrolls within the column.
+ */
 function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);

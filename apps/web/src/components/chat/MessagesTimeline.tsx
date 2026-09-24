@@ -2348,6 +2348,10 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
   );
 }
 
+/**
+ * An assistant reply in the timeline. Its markdown opts into
+ * `chat-markdown-wide-tables`, so top-level tables may widen past the column.
+ */
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
