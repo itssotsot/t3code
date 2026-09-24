@@ -773,54 +773,60 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
       className="chat-markdown-table-container"
       data-expanded={expanded ? "true" : "false"}
     >
-      <ScrollArea radius="none" chainVerticalScroll scrollFade className="w-full max-w-full">
-        <table ref={tableRef} {...props}>
-          {children}
-        </table>
-      </ScrollArea>
-      <div className="mt-0.5 flex items-center justify-between select-none">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                type="button"
-                variant={expanded ? "secondary" : "ghost-muted"}
-                size="icon-xs"
-                aria-pressed={expanded}
-                onClick={toggleExpanded}
-                aria-label={expandLabel}
-              />
-            }
-          >
-            {expanded ? <Minimize2Icon className="size-3" /> : <Maximize2Icon className="size-3" />}
-          </TooltipTrigger>
-          <TooltipPopup side="top">{expandLabel}</TooltipPopup>
-        </Tooltip>
-        <Menu>
+      <div className="chat-markdown-table-frame">
+        <ScrollArea radius="none" chainVerticalScroll scrollFade className="w-full max-w-full">
+          <table ref={tableRef} {...props}>
+            {children}
+          </table>
+        </ScrollArea>
+        <div className="mt-0.5 flex items-center justify-between select-none">
           <Tooltip>
             <TooltipTrigger
               render={
-                <MenuTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost-muted"
-                      size="icon-xs"
-                      aria-label={copyLabel}
-                    />
-                  }
+                <Button
+                  type="button"
+                  variant={expanded ? "secondary" : "ghost-muted"}
+                  size="icon-xs"
+                  aria-pressed={expanded}
+                  onClick={toggleExpanded}
+                  aria-label={expandLabel}
                 />
               }
             >
-              {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+              {expanded ? (
+                <Minimize2Icon className="size-3" />
+              ) : (
+                <Maximize2Icon className="size-3" />
+              )}
             </TooltipTrigger>
-            <TooltipPopup side="top">{copyLabel}</TooltipPopup>
+            <TooltipPopup side="top">{expandLabel}</TooltipPopup>
           </Tooltip>
-          <MenuPopup align="end">
-            <MenuItem onClick={() => handleCopy("markdown")}>Copy as Markdown</MenuItem>
-            <MenuItem onClick={() => handleCopy("csv")}>Copy as CSV</MenuItem>
-          </MenuPopup>
-        </Menu>
+          <Menu>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <MenuTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost-muted"
+                        size="icon-xs"
+                        aria-label={copyLabel}
+                      />
+                    }
+                  />
+                }
+              >
+                {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+              </TooltipTrigger>
+              <TooltipPopup side="top">{copyLabel}</TooltipPopup>
+            </Tooltip>
+            <MenuPopup align="end">
+              <MenuItem onClick={() => handleCopy("markdown")}>Copy as Markdown</MenuItem>
+              <MenuItem onClick={() => handleCopy("csv")}>Copy as CSV</MenuItem>
+            </MenuPopup>
+          </Menu>
+        </div>
       </div>
     </div>
   );

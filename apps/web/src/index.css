@@ -1934,6 +1934,23 @@ code {
   overflow-wrap: anywhere;
 }
 
+/* Assistant replies in the timeline: a top-level table wider than the reading
+   column grows into the pane's side gutters instead of scrolling. The flex
+   parent centers the frame so it overflows the column evenly on both sides;
+   width is capped to the timeline container (`@container/chat-timeline`)
+   minus the minimap gutter, and the ScrollArea only scrolls past that. */
+.chat-markdown-wide-tables > .chat-markdown-table-container {
+  display: flex;
+  justify-content: center;
+}
+
+.chat-markdown-wide-tables > .chat-markdown-table-container > .chat-markdown-table-frame {
+  flex: none;
+  width: max-content;
+  min-width: 100%;
+  max-width: max(100%, calc(100cqw - 6.5rem));
+}
+
 /* Prompt-stash save acknowledgement: the new count fades up from just below
    its resting position, once, then stops. One-shot and event-driven (React
    remounts the element by key on each stash) — no continuous animation. */
