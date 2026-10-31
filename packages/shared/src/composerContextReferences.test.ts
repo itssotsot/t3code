@@ -12,7 +12,9 @@ import {
   formatComposerContextHref,
   isImageReferencesOnly,
   parseComposerContextHref,
+  personaContextRecord,
   projectComposerContextForProvider,
+  resolvePersonaPermissions,
   restoreAttachmentOnlyBootstrapPrompt,
   stripAttachmentOnlyBootstrapPrompt,
   threadContextRecord,
@@ -310,6 +312,67 @@ describe("provider projection", () => {
     expect(projected).toContain("environmentId: environment-vps");
     expect(projected).toContain("t3_environment_link with this environmentId");
     expect(projected).not.toMatch(/https?:/);
+  });
+
+  it("projects a mentioned agent as instructions to answer within its responsibilities", () => {
+    const projected = projectComposerContextForProvider({
+      text: "[Reviewer](t3-context://v1/persona/persona_reviewer) check this diff",
+      records: [
+        {
+          version: 1,
+          kind: "persona",
+          contextId: ctx("persona_reviewer"),
+          label: "Reviewer",
+          personaId: "reviewer" as never,
+          responsibilities: "Reviews for correctness.\nNever edits files.",
+          faceSeed: "seed-1",
+        },
+      ],
+    });
+    expect(projected.startsWith("[Persona: Reviewer; ref=persona_reviewer] check this diff")).toBe(
+      true,
+    );
+    expect(projected).toContain('<context kind="persona" id="persona_reviewer">');
+    expect(projected).toContain("Answer this turn as Reviewer");
+    expect(projected).toContain(
+      "responsibilities:\n  Reviews for correctness.\n  Never edits files.",
+    );
+    expect(projected).not.toContain("seed-1");
+  });
+
+  it("tells a read-only bot not to edit and names the bots it may hand work to", () => {
+    const projected = projectComposerContextForProvider({
+      text: "[Reviewer](t3-context://v1/persona/persona_reviewer) check this",
+      records: [
+        personaContextRecord(
+          "reviewer" as never,
+          { name: "Reviewer", responsibilities: "Finds bugs.", faceSeed: "seed" },
+          { canEditCode: false, delegatesTo: [{ personaId: "builder" as never, name: "Builder" }] },
+        ),
+      ],
+    });
+    expect(projected).toContain("Read-only: do not edit files");
+    expect(projected).toContain(
+      "May hand work only to these bots, with delegate_task botId: Builder (builder).",
+    );
+  });
+
+  it("names only bots that still exist, and every other bot for all", () => {
+    const personas = { lead: { name: "Lead" }, builder: { name: "Builder" } } as never;
+    expect(
+      resolvePersonaPermissions(
+        "lead" as never,
+        { canEditCode: true, delegatesTo: ["builder" as never, "deleted" as never] },
+        personas,
+      ),
+    ).toEqual({ canEditCode: true, delegatesTo: [{ personaId: "builder", name: "Builder" }] });
+    expect(
+      resolvePersonaPermissions(
+        "lead" as never,
+        { canEditCode: true, delegatesTo: "all" },
+        personas,
+      ),
+    ).toEqual({ canEditCode: true, delegatesTo: [{ personaId: "builder", name: "Builder" }] });
   });
 
   it("marks duplicate identities unavailable instead of choosing one payload", () => {

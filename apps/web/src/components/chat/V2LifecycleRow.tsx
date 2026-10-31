@@ -26,6 +26,7 @@ import {
   type OrchestrationV2TurnItem,
   type OrchestrationV2RemoteTaskChild,
   type OrchestrationV2Subagent,
+  type PersonaIdentity,
   type ProviderInstanceId,
   type ServerProvider,
   type ThreadId,
@@ -55,6 +56,8 @@ import { formatShortTimestamp } from "../../timestampFormat";
 import { getTriggerDisplayModelName } from "./providerIconUtils";
 import { ProviderInstanceIcon, providerTextColor } from "./ProviderInstanceIcon";
 import { cn } from "~/lib/utils";
+import { PersonaFace } from "../PersonaFace";
+import { personaFaceStateForStatus } from "@t3tools/shared/personaFace";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { subagentResumedSince } from "./V2LifecycleRow.logic";
 import { Button, InlineButton } from "../ui/button";
@@ -145,6 +148,7 @@ export function V2LifecycleRow(props: {
         status={item.status}
         driver={item.driver}
         title={formatSubagentDisplayTitle(item.title ?? "Subagent")}
+        persona={item.persona}
         result={item.result}
         progress={item.progress}
         startedAt={item.startedAt}
@@ -206,24 +210,37 @@ function SubagentAvatar({
   driver,
   displayName,
   iconUrl,
+  persona,
   status,
+  faceStatus,
   className,
 }: {
   driver?: ProviderDriverKind | undefined;
   displayName?: string | undefined;
   iconUrl?: string | undefined;
+  /** An agent's child shows the agent's face instead of its provider. */
+  persona?: PersonaIdentity | undefined;
   status?: OrchestrationV2TurnItem["status"] | undefined;
+  /** Drives the agent's expression where `status` is left out to hide the status dot. */
+  faceStatus?: OrchestrationV2TurnItem["status"] | undefined;
   className?: string;
 }) {
   return (
     <span
       aria-hidden
       className={cn(
-        "relative inline-flex size-6 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted ring-2 ring-background",
+        "relative inline-flex size-6 shrink-0 items-center justify-center rounded-full ring-2 ring-background",
+        persona === undefined && "border border-border/70 bg-muted",
         className,
       )}
     >
-      {driver ? (
+      {persona !== undefined ? (
+        <PersonaFace
+          seed={persona.faceSeed}
+          state={personaFaceStateForStatus(faceStatus ?? status)}
+          className="size-full"
+        />
+      ) : driver ? (
         <ProviderInstanceIcon
           driverKind={driver}
           displayName={displayName ?? driver}
@@ -259,7 +276,9 @@ export function EnvironmentSubagentAvatar({
   driver?: ProviderDriverKind | undefined;
   /** A task in a linked environment runs a provider instance there; its driver here is only a label. */
   remote?: OrchestrationV2RemoteTaskChild | undefined;
+  persona?: PersonaIdentity | undefined;
   status?: OrchestrationV2TurnItem["status"] | undefined;
+  faceStatus?: OrchestrationV2TurnItem["status"] | undefined;
 }) {
   const providersAtom = serverEnvironment.providersValueAtom(
     remote?.environmentId ?? environmentId,
@@ -367,6 +386,8 @@ function SubagentTimelineLink(props: {
   readonly origin: OrchestrationV2Subagent["origin"];
   readonly driver: ProviderDriverKind;
   readonly title: string;
+  /** The agent this task runs as, when it was delegated to one. */
+  readonly persona?: PersonaIdentity | undefined;
   readonly result: string | null;
   readonly progress: string | undefined;
   readonly status: OrchestrationV2TurnItem["status"];
@@ -387,6 +408,7 @@ function SubagentTimelineLink(props: {
     (thread) => thread?.projection.subagents.find((agent) => agent.id === props.subagentId) ?? null,
   );
   const remote = props.remote ?? agent?.remoteChild;
+  const persona = props.persona ?? agent?.persona;
   const remoteEnvironment = useEnvironment(remote?.environmentId ?? null);
   const navigate = useNavigate();
   const threadId = props.threadId;
@@ -423,12 +445,20 @@ function SubagentTimelineLink(props: {
         providerInstanceId={props.providerInstanceId}
         driver={props.driver}
         remote={remote}
+        persona={persona}
         status={status ?? undefined}
       />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2">
           <span className="min-w-0 truncate text-xs font-medium text-foreground">
-            {props.title}
+            {persona !== undefined ? (
+              <>
+                {persona.name}
+                <span className="font-normal text-muted-foreground"> · {props.title}</span>
+              </>
+            ) : (
+              props.title
+            )}
           </span>
           {remote !== undefined ? (
             <span className="shrink-0 text-xs text-muted-foreground">on {remote.label}</span>
@@ -482,7 +512,7 @@ function SubagentTimelineLink(props: {
             <button
               type="button"
               data-v2-item-type="subagent"
-              aria-label={`Open ${props.title}`}
+              aria-label={`Open ${persona === undefined ? props.title : `${persona.name}, ${props.title}`}`}
               aria-description={statusLabel}
               onClick={open}
               className={cn(
@@ -498,6 +528,7 @@ function SubagentTimelineLink(props: {
       <ThreadHoverCardPopup>
         <SubagentTimelineTooltip
           {...props}
+          persona={persona}
           elapsed={agent ? <AgentElapsed agent={projectedSubagentsToRuntime([agent])[0]!} /> : null}
           model={agent?.model ?? null}
           modelSelection={agent?.modelSelection}
@@ -532,6 +563,7 @@ function SubagentTimelineTooltip(
   return (
     <SubagentTooltipContent
       title={formatSubagentDisplayTitle(child?.title ?? props.title)}
+      persona={props.persona}
       model={props.model}
       providerInstanceId={props.providerInstanceId}
       origin={props.origin}

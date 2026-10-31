@@ -246,6 +246,7 @@ export const make = Effect.gen(function* () {
       providerWorkspaceSnapshotsOnDemand: true,
       usagePriceOverrides: true,
       usageModelAliases: true,
+      personas: true,
       threadPinning: true,
       threadPinReorder: true,
       threadActiveReorder: true,

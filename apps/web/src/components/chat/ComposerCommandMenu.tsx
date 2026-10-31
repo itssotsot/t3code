@@ -7,6 +7,9 @@ import {
 import {
   type EnvironmentId,
   type EnvironmentMachineKind,
+  type PersonaConfig,
+  type PersonaId,
+  type PersonaPermissions,
   type ProjectEntry,
   type ProviderDriverKind,
   type PullRequestContextMetadata,
@@ -30,6 +33,7 @@ import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
+import { PersonaFace } from "../PersonaFace";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
@@ -86,6 +90,15 @@ export type ComposerCommandItem =
       type: "environment";
       environmentId: EnvironmentId;
       machine: EnvironmentMachineKind;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "persona";
+      personaId: PersonaId;
+      persona: PersonaConfig;
+      permissions: PersonaPermissions;
       label: string;
       description: string;
     };
@@ -213,6 +226,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "thread" ? (
         <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+      ) : null}
+      {props.item.type === "persona" ? (
+        <PersonaFace seed={props.item.persona.faceSeed} className="size-4 shrink-0" />
       ) : null}
       {props.item.type === "environment" ? (
         <EnvironmentMachineIcon

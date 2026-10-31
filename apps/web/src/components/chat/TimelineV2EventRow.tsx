@@ -81,6 +81,10 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
   });
   const summary = subagentGroupSummary(agents);
   const label = `${members.length} ${members.length === 1 ? "subagent" : "subagents"}`;
+  // A group of agents reads as the team that worked on it.
+  const personaNames = members.every((item) => item.persona !== undefined)
+    ? [...new Set(members.map((item) => item.persona?.name))].join(", ")
+    : null;
   const statusSummary = summarizeSubagentStatuses(agents.map(({ status }) => status));
   const toggleExpanded = (open: boolean) => {
     ctx.onToggleWorkEntry(row.id, expanded);
@@ -110,7 +114,9 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
                 providerInstanceId={item.providerInstanceId}
                 driver={item.driver}
                 remote={item.remoteChild}
+                persona={item.persona}
                 status={agents.length === 1 ? status : undefined}
+                faceStatus={status}
               />
             ))}
             {agents.length > 3 ? (
@@ -120,7 +126,7 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
             ) : null}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-xs font-semibold">{label}</span>
+            <span className="block truncate text-xs font-semibold">{personaNames ?? label}</span>
             <span
               className={cn(
                 "block truncate text-3xs text-muted-foreground",

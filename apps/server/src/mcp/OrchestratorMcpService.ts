@@ -6,6 +6,9 @@ import {
   type ModelSelection,
   NodeId,
   ORCHESTRATOR_MCP_RUNNING_TASK_NEXT,
+  type PersonaConfig,
+  PersonaId,
+  personaDelegateIds,
   TurnItemId,
   type OrchestrationV2Run,
   type OrchestrationV2Subagent,
@@ -66,6 +69,7 @@ import {
 import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
+import { resolvePersonaPermissions } from "@t3tools/shared/composerContextReferences";
 import {
   normalizeThreadPullRequestKey,
   visibleThreadPullRequests,
@@ -1272,6 +1276,43 @@ const make = Effect.gen(function* () {
     );
   };
 
+  const resolvePersona = Effect.fn("OrchestratorMcpService.resolvePersona")(function* (
+    botId: PersonaId | undefined,
+  ) {
+    if (botId === undefined) return undefined;
+    const settings = yield* serverSettings.getSettings.pipe(
+      Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
+    );
+    const config = settings.personas[botId];
+    if (config === undefined) {
+      return yield* failure(
+        "invalid_request",
+        `No bot ${botId}. Use a botId from orchestrator_capabilities.`,
+      );
+    }
+    return {
+      id: botId,
+      config,
+      permissions: resolvePersonaPermissions(botId, config, settings.personas),
+    };
+  });
+
+  /**
+   * The bots a delegating thread may hand work to: any of them, unless the thread itself runs as
+   * a bot, which may use only the ones its settings list. A deleted bot may use none.
+   */
+  const delegableBotIds = (
+    caller: Pick<OrchestrationV2ThreadProjection, "thread">,
+    personas: Readonly<Record<PersonaId, PersonaConfig>>,
+  ): ReadonlySet<PersonaId> | null => {
+    const callerBot = caller.thread.persona;
+    if (callerBot === undefined) return null;
+    const config = personas[callerBot.personaId];
+    return new Set(
+      config === undefined ? [] : personaDelegateIds(callerBot.personaId, config, personas),
+    );
+  };
+
   const resolveTarget = Effect.fn("OrchestratorMcpService.resolveTarget")(function* (input: {
     readonly parent: Pick<OrchestrationV2ThreadProjection, "thread">;
     readonly target: OrchestratorMcpTarget | undefined;
@@ -2187,6 +2228,21 @@ const make = Effect.gen(function* () {
             constraints: [...constraints],
           };
         }),
+        bots: Object.entries(settings.personas)
+          .filter(([botId]) => {
+            const allowed = parent ? delegableBotIds(parent, settings.personas) : null;
+            return allowed === null || allowed.has(PersonaId.make(botId));
+          })
+          .map(([botId, persona]) => ({
+            botId: PersonaId.make(botId),
+            name: persona.name,
+            responsibilities: persona.responsibilities,
+            providerInstanceId: persona.modelSelection.instanceId,
+            model: persona.modelSelection.model,
+            ...(persona.modelSelection.options === undefined
+              ? {}
+              : { options: persona.modelSelection.options }),
+          })),
         features: {
           appOwnedSubagents: true,
           asyncPolling: true,
@@ -2205,6 +2261,12 @@ const make = Effect.gen(function* () {
           ? undefined
           : PeerForwarding.remoteTarget(callerScope, input.target.environmentId);
       if (input.target !== undefined && environmentId !== undefined) {
+        if (input.botId !== undefined) {
+          return yield* failure(
+            "invalid_request",
+            "Bots run only on this machine. Omit botId to delegate to another environment.",
+          );
+        }
         yield* requireCapability(callerScope);
         const scope = yield* requireThreadScope(callerScope, "delegate_task");
         // The task's child runs as an ordinary thread there; this thread keeps the task.
@@ -2247,15 +2309,38 @@ const make = Effect.gen(function* () {
         operation: "delegate-task",
       });
       const isRetryOfAcceptedDelegation = yield* threadManagement.hasReceipt(commandId);
+      const persona = yield* resolvePersona(input.botId);
+      const callerSettings = yield* serverSettings.getSettings.pipe(
+        Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
+      );
+      const allowedBots = delegableBotIds(parent, callerSettings.personas);
+      if (allowedBots !== null && (input.botId === undefined || !allowedBots.has(input.botId))) {
+        const names = [...allowedBots].flatMap((id) => callerSettings.personas[id]?.name ?? []);
+        return yield* failure(
+          "invalid_request",
+          names.length === 0
+            ? `${parent.thread.persona?.name ?? "This bot"} may not hand work to other bots.`
+            : `${parent.thread.persona?.name ?? "This bot"} may hand work only to: ${names.join(", ")}. Pass one of their botIds.`,
+        );
+      }
       const target = yield* resolveTargetRechecking({
         parent,
-        target: input.target,
+        target:
+          persona === undefined
+            ? input.target
+            : {
+                providerInstanceId: persona.config.modelSelection.instanceId,
+                model: persona.config.modelSelection.model,
+                options: persona.config.modelSelection.options ?? [],
+                ...input.target,
+              },
         providers,
         skipProjectEnablementFilter: isRetryOfAcceptedDelegation,
       });
+      // A read-only bot runs supervised, so any change it attempts waits for the user.
       const runtimeMode = yield* resolveRuntimeMode(
         parent.thread.runtimeMode,
-        input.runtimeMode,
+        persona?.config.canEditCode === false ? "approval-required" : input.runtimeMode,
         target,
       );
       const interactionMode = yield* resolveInteractionMode(
@@ -2307,6 +2392,17 @@ const make = Effect.gen(function* () {
           task: taskPrompt(input),
           ...(input.title === undefined ? {} : { title: input.title }),
           modelSelection: target.modelSelection,
+          ...(persona === undefined
+            ? {}
+            : {
+                persona: {
+                  personaId: persona.id,
+                  name: persona.config.name,
+                  faceSeed: persona.config.faceSeed,
+                  responsibilities: persona.config.responsibilities,
+                  permissions: persona.permissions,
+                },
+              }),
           runtimeMode,
           interactionMode,
           ...(workspaceStrategy === undefined ? {} : { workspaceStrategy }),

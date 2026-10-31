@@ -6,6 +6,11 @@ import {
   type ElementContextDetails,
   type EnvironmentId,
   type KnownComposerContextRecord,
+  type PersonaConfig,
+  type PersonaContextRecord,
+  type PersonaId,
+  personaDelegateIds,
+  type PersonaPermissions,
   type ScopedThreadRef,
   type ThreadContextRecord,
 } from "@t3tools/contracts";
@@ -86,6 +91,39 @@ export function threadContextRecord(ref: ScopedThreadRef, title: string): Thread
     environmentId: ref.environmentId,
     threadId: ref.threadId,
     title: label,
+  };
+}
+
+/** One record per agent: mentioning or delegating to the same agent reuses its chip. */
+export function personaContextRecord(
+  personaId: PersonaId,
+  persona: Pick<PersonaConfig, "name" | "responsibilities" | "faceSeed">,
+  permissions?: PersonaPermissions,
+): PersonaContextRecord {
+  return {
+    version: 1,
+    kind: "persona",
+    contextId: toKindScopedComposerContextId("persona", personaId),
+    label: sanitizeComposerContextLabel(persona.name, "persona"),
+    personaId,
+    responsibilities: persona.responsibilities,
+    faceSeed: persona.faceSeed,
+    ...(permissions === undefined ? {} : { permissions }),
+  };
+}
+
+/** A persona's permissions with the personas it may delegate to named. */
+export function resolvePersonaPermissions(
+  id: PersonaId,
+  persona: Pick<PersonaConfig, "canEditCode" | "delegatesTo">,
+  personas: Readonly<Record<PersonaId, Pick<PersonaConfig, "name">>>,
+): PersonaPermissions {
+  return {
+    canEditCode: persona.canEditCode,
+    delegatesTo: personaDelegateIds(id, persona, personas).flatMap((personaId) => {
+      const target = personas[personaId];
+      return target === undefined ? [] : [{ personaId, name: target.name }];
+    }),
   };
 }
 
@@ -309,6 +347,27 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `environmentId: ${record.environmentId}`,
         "The user means this machine. Not linked here yet: call t3_environment_link with this environmentId. Linked: pass it as environmentId, or target.environmentId for delegate_task.",
       ].join("\n");
+    case "persona": {
+      const responsibilities = record.responsibilities.trim();
+      const permissions = record.permissions;
+      return [
+        `name: ${record.label}`,
+        `The user addressed this message to ${record.label}. Answer this turn as ${record.label}, staying within its responsibilities.`,
+        ...(responsibilities ? ["responsibilities:", indent(responsibilities)] : []),
+        ...(permissions === undefined
+          ? []
+          : [
+              permissions.canEditCode
+                ? "May edit code."
+                : "Read-only: do not edit files or run commands that change them. Describe the changes instead.",
+              permissions.delegatesTo.length === 0
+                ? "Do not hand work to other bots."
+                : `May hand work only to these bots, with delegate_task botId: ${permissions.delegatesTo
+                    .map((target) => `${target.name} (${target.personaId})`)
+                    .join(", ")}.`,
+            ]),
+      ].join("\n");
+    }
   }
 }
 

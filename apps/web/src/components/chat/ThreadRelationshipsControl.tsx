@@ -647,6 +647,8 @@ export function ThreadRelationshipsPanel(props: {
                 ? projectedAgent
                 : currentSubagent(projectedAgent, node?.thread);
               const failed = rowStatus === "failed" || rowStatus === "error";
+              const persona =
+                isSubagent && !isParent ? (node?.thread?.persona ?? undefined) : undefined;
               const canStop =
                 agent &&
                 (agent.origin === "app_owned" ||
@@ -688,6 +690,7 @@ export function ThreadRelationshipsPanel(props: {
               const relationshipTooltip = agent ? (
                 <SubagentTooltipContent
                   title={threadTitle}
+                  persona={persona}
                   model={agent.model}
                   providerInstanceId={agent.providerInstanceId}
                   origin={agent.origin}
@@ -712,12 +715,23 @@ export function ThreadRelationshipsPanel(props: {
                   <ThreadRelationshipIcon
                     driver={isSubagent && !isParent ? providerDriver : undefined}
                     provider={provider}
+                    persona={persona}
                     fallbackIcon={RelationshipIcon}
                     status={rowStatus}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-left text-sm font-medium leading-4 text-foreground/85">
-                      {threadTitle}
+                      {persona !== undefined ? (
+                        <>
+                          {persona.name}
+                          <span className="font-normal text-muted-foreground">
+                            {" "}
+                            · {threadTitle}
+                          </span>
+                        </>
+                      ) : (
+                        threadTitle
+                      )}
                     </span>
                   </span>
                   {agent ? null : (

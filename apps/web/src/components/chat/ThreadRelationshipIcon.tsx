@@ -1,6 +1,8 @@
-import type { ProviderDriverKind, ServerProvider } from "@t3tools/contracts";
+import type { PersonaIdentity, ProviderDriverKind, ServerProvider } from "@t3tools/contracts";
 import { BotIcon, type LucideIcon } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { personaFaceStateForStatus } from "@t3tools/shared/personaFace";
+import { PersonaFace } from "../PersonaFace";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 
 export function threadRelationshipStatusLabel(status: string | null): string {
@@ -45,18 +47,27 @@ export function threadRelationshipStatusLabel(status: string | null): string {
 export function ThreadRelationshipIcon({
   driver,
   provider,
+  persona,
   status,
   fallbackIcon: FallbackIcon = BotIcon,
 }: {
   driver?: ProviderDriverKind | undefined;
   provider?: ServerProvider | undefined;
+  /** An agent's child shows the agent's face instead of its provider. */
+  persona?: PersonaIdentity | undefined;
   status: string | null;
   fallbackIcon?: LucideIcon;
 }) {
   const iconClassName = "size-4 shrink-0 text-muted-foreground";
   return (
     <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
-      {driver ? (
+      {persona !== undefined ? (
+        <PersonaFace
+          seed={persona.faceSeed}
+          state={personaFaceStateForStatus(status)}
+          className="size-4 shrink-0"
+        />
+      ) : driver ? (
         <ProviderInstanceIcon
           driverKind={driver}
           displayName={provider?.displayName ?? driver}

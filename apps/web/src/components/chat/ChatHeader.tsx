@@ -1,6 +1,7 @@
 import {
   AuthOrchestrationOperateScope,
   type EnvironmentId,
+  type PersonaIdentity,
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -42,11 +43,17 @@ import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
 import { GuestShareIndicator } from "./GuestShareControls";
+import { personaFaceStateForStatus } from "@t3tools/shared/personaFace";
+import { PersonaFace } from "../PersonaFace";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
   activeThreadId: ThreadId;
   activeThreadTitle: string;
+  /** The agent this thread runs as, when it was delegated to one. */
+  activeThreadPersona?: PersonaIdentity | null | undefined;
+  /** The thread's run status, which the agent's face shows. */
+  activeThreadRunStatus?: string | null | undefined;
   activeThreadLinkOrigin?: string | null | undefined;
   isServerThread: boolean;
   activeProject: EnvironmentProject | null;
@@ -74,6 +81,8 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadEnvironmentId,
   activeThreadId,
   activeThreadTitle,
+  activeThreadPersona,
+  activeThreadRunStatus,
   activeThreadLinkOrigin,
   isServerThread,
   activeProject,
@@ -351,6 +360,19 @@ export const ChatHeader = memo(function ChatHeader({
           </>
         ) : null}
         <WorkspaceBreadcrumbItem current className="min-w-10 flex-1">
+          {activeThreadPersona ? (
+            <span className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-foreground">
+              <PersonaFace
+                seed={activeThreadPersona.faceSeed}
+                state={personaFaceStateForStatus(activeThreadRunStatus)}
+                className="size-4 shrink-0"
+              />
+              {activeThreadPersona.name}
+              <span aria-hidden className="text-muted-foreground">
+                ·
+              </span>
+            </span>
+          ) : null}
           {renamingTitle !== null ? (
             <input
               autoFocus

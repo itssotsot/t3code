@@ -43,6 +43,8 @@ import {
   rankPullRequestMatches,
 } from "../pullRequest/pullRequestList.logic";
 import type { ComposerCommandItem } from "./ComposerCommandMenu";
+import { matchComposerPersonaItems } from "./composerPersonaItems";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
   searchSlashCommandItems,
   slashCommandItemsForPromptPosition,
@@ -107,6 +109,7 @@ export function useComposerMenuItems({
   // Mounts older settled threads matching the mention, which shells may leave out.
   useThreadSearch(isPathTrigger ? [environmentId] : [], pathTriggerQuery, { titlesOnly: true });
   // The user's machines feed `@` machine matches; the catalog summary is cheap and stable.
+  const personas = useEnvironmentSettings(environmentId, (settings) => settings.personas);
   const environmentIdentities = useEnvironmentIdentities();
   const environmentMachines = useEnvironmentMachines();
   const offersMachines = useAtomValue(offersLinkedEnvironmentsAtom(environmentId));
@@ -182,6 +185,10 @@ export function useComposerMenuItems({
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
       return [
+        // An agent takes the turn, which an answer to an agent's question cannot change.
+        ...(questionAttachmentTarget === null
+          ? matchComposerPersonaItems({ personas, query: composerTrigger.query })
+          : []),
         ...matchComposerThreadItems({
           shells: environmentThreadShells,
           environmentId,

@@ -26,7 +26,9 @@ import type {
   PreviewAnnotationPayload,
   ThreadContextRecord,
   EnvironmentContextRecord,
+  PersonaContextRecord,
   ProviderInteractionMode,
+  ProviderOptionSelection,
   ResolvedKeybindingsConfig,
   RuntimeMode,
   RuntimeRequestId,
@@ -137,6 +139,7 @@ import {
   type TerminalContextSelection,
 } from "../../lib/terminalContext";
 import {
+  personaContextRecord,
   threadContextRecord,
   toKindScopedComposerContextId,
 } from "@t3tools/shared/composerContextReferences";
@@ -175,6 +178,7 @@ import {
   threadContextReference,
   environmentContextRecord,
   environmentContextReference,
+  personaContextReference,
 } from "~/lib/composerContextRecords";
 import { rememberCopiedComposerAttachments } from "~/lib/copiedComposerAttachments";
 import { useThreadContextDrop, threadContextDropTargetProps } from "./threadContextDrag";
@@ -329,6 +333,7 @@ export interface ChatComposerHandle {
     reviewComments: ReviewCommentContext[];
     threadContexts: ThreadContextRecord[];
     environmentContexts: EnvironmentContextRecord[];
+    personaContexts: PersonaContextRecord[];
     selectedPromptEffort: string | null;
     selectedModelSelection: ModelSelection;
     multipleModelSelections: ReadonlyArray<ModelSelection> | null;
@@ -480,7 +485,11 @@ export interface ChatComposerProps {
   onProviderModelSelect: (
     instanceId: ProviderInstanceId,
     model: string,
-    options?: { focusComposer?: boolean },
+    options?: {
+      focusComposer?: boolean;
+      modelOptions?: ReadonlyArray<ProviderOptionSelection>;
+      persistSticky?: boolean;
+    },
   ) => void;
   onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
@@ -700,6 +709,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerReviewComments = composerDraft.reviewComments;
   const composerThreadContexts = attachmentDraft.threadContexts;
   const composerEnvironmentContexts = composerDraft.environmentContexts;
+  const composerPersonaContexts = composerDraft.personaContexts;
   const {
     pendingSnapShotAnimations,
     pendingSnapShotIds,
@@ -751,6 +761,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     previewAnnotations: composerPreviewAnnotations,
     threadContexts: composerThreadContexts,
     environmentContexts: composerEnvironmentContexts,
+    personaContexts: composerPersonaContexts,
     images: composerImages,
     files: composerFiles,
     uploadsByImageId,
@@ -1280,6 +1291,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const setComposerDraftEnvironmentContexts = useComposerDraftStore(
     (store) => store.setEnvironmentContexts,
   );
+  const addComposerDraftPersonaContexts = useComposerDraftStore(
+    (store) => store.addPersonaContexts,
+  );
+  const setComposerDraftPersonaContexts = useComposerDraftStore(
+    (store) => store.setPersonaContexts,
+  );
   const buildContextClipboardFragment = (contextIds: ReadonlyArray<string>): string | null => {
     const wanted = new Set(contextIds);
     const copiedFiles = new Map<string, File>();
@@ -1297,6 +1314,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         .map(terminalContextRecord),
       ...composerThreadContexts.filter((record) => wanted.has(record.contextId)),
       ...composerEnvironmentContexts.filter((record) => wanted.has(record.contextId)),
+      ...composerPersonaContexts.filter((record) => wanted.has(record.contextId)),
       ...composerReviewComments
         .filter((c) => wanted.has(reviewCommentContextId(c.id)))
         .map(reviewCommentContextRecord),
@@ -1650,6 +1668,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setComposerDraftEnvironmentContexts(composerDraftTarget, nextEnvironments);
     }
 
+    const livePersonaIds = new Set<string>(
+      composerPersonaContexts.map((record) => record.contextId),
+    );
+    const restoredPersonas = [...referenced].flatMap((contextId) => {
+      if (livePersonaIds.has(contextId)) return [];
+      const record = retained.personas.get(contextId);
+      return record ? [record] : [];
+    });
+    const nextPersonas = [
+      ...composerPersonaContexts.filter((record) => referenced.has(record.contextId)),
+      ...restoredPersonas,
+    ];
+    for (const record of composerPersonaContexts) {
+      if (!referenced.has(record.contextId)) retained.personas.set(record.contextId, record);
+    }
+    if (nextPersonas.length !== composerPersonaContexts.length || restoredPersonas.length > 0) {
+      setComposerDraftPersonaContexts(composerDraftTarget, nextPersonas);
+    }
+
     for (const comment of composerReviewComments) {
       const contextId = reviewCommentContextId(comment.id);
       if (!referenced.has(contextId)) {
@@ -1965,6 +2002,35 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           appendReference: false,
         });
         setComposerHighlightedItemId(null);
+      }
+      return;
+    }
+    if (item.type === "persona") {
+      if (trigger.kind !== "path") return;
+      const record = personaContextRecord(item.personaId, item.persona, item.permissions);
+      const replacement = `${formatInlineContextReference(personaContextReference(record))} `;
+      const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+        snapshot.value,
+        trigger.rangeEnd,
+        replacement,
+      );
+      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+        expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
+      });
+      if (applied) {
+        addComposerDraftPersonaContexts(composerDraftTarget, [record], {
+          appendReference: false,
+        });
+        setComposerHighlightedItemId(null);
+        // The mentioned agent takes the turn, so the pickers show its model and effort.
+        const { instanceId, model, options } = item.persona.modelSelection;
+        onProviderModelSelect(instanceId, model, {
+          focusComposer: false,
+          modelOptions: options ?? [],
+          persistSticky: false,
+        });
+        // A read-only bot runs supervised, so any change it attempts waits for approval.
+        if (!item.permissions.canEditCode) handleRuntimeModeChange("approval-required");
       }
       return;
     }
@@ -2928,6 +2994,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         reviewComments: composerReviewComments,
         threadContexts: composerThreadContexts,
         environmentContexts: composerEnvironmentContexts,
+        personaContexts: composerPersonaContexts,
         selectedPromptEffort,
         selectedModelSelection,
         multipleModelSelections:
@@ -2984,6 +3051,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerReviewComments,
       composerThreadContexts,
       composerEnvironmentContexts,
+      composerPersonaContexts,
       focusComposer,
       environmentId,
       primaryEnvironmentId,

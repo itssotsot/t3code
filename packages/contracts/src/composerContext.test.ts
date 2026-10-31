@@ -118,6 +118,14 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     label: "vps",
     environmentId: "environment-vps",
   },
+  persona: {
+    ...base,
+    kind: "persona",
+    label: "Reviewer",
+    personaId: "reviewer",
+    responsibilities: "Reviews diffs for correctness.",
+    faceSeed: "seed-1",
+  },
 };
 
 describe("ComposerContextRecord", () => {

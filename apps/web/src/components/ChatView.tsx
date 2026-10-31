@@ -870,6 +870,7 @@ export default function ChatView(props: ChatViewProps) {
     if (parentSubagentThreadRef !== null) {
       return {
         title: parentSubagentThread?.title ?? "Parent thread",
+        persona: serverThread?.persona ?? null,
         open: (): void => {
           void navigate({
             to: "/$environmentId/$threadId",
@@ -3240,6 +3241,8 @@ export default function ChatView(props: ChatViewProps) {
             activeThreadId={activeThread.id}
             isServerThread={isServerThread}
             activeThreadTitle={activeThread.title}
+            activeThreadPersona={activeThreadShell?.persona ?? null}
+            activeThreadRunStatus={activeThreadShell?.runtime?.status ?? null}
             activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
             activeProject={activeProject ?? null}
             parentThreadLink={headerParentThreadLink}

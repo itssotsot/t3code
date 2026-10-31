@@ -45,6 +45,8 @@ const CONTEXT_CHIP_PRESENTATIONS = {
   },
   // A machine: the record carries only its identity, so every machine wears one glyph.
   environment: { accent: "#3f9a4f", icon: "server" },
+  // An agent: native chips can't draw its generated face, so every agent wears one glyph.
+  persona: { accent: "#d15d4d", icon: "smile" },
 } as const satisfies Record<string, ContextChipPresentation>;
 
 const CHIP_CONTRAST = 5;

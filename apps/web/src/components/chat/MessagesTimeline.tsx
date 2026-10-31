@@ -9,11 +9,13 @@ import { WorkLogBlock } from "./WorkLog";
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
+import { PersonaFace } from "../PersonaFace";
 import {
   type AssistantCitation,
   type EnvironmentId,
   type MessageId,
   type OrchestrationV2TurnItem,
+  type PersonaIdentity,
   type RunAttemptId,
   type ServerProviderSkill,
   type RunId,
@@ -257,6 +259,8 @@ interface MessagesTimelineProps {
     /** Where it runs, when that is another environment. */
     readonly environmentLabel?: string;
     readonly open?: () => void;
+    /** The agent this thread runs as, when it was delegated to one. */
+    readonly persona?: PersonaIdentity | null;
   } | null;
   workflowOpening?: WorkflowOpening | null;
   onForkFromRun?: (input: {
@@ -1098,7 +1102,21 @@ const ConversationTimeline = memo(function ConversationTimeline({
       <div className="messages-timeline-row-frame">
         <div className="chat-content-lane pt-1 sm:pt-2">
           <TimelineSystemDivider
-            label="Subagent of"
+            label={
+              parentThreadLink.persona
+                ? `${parentThreadLink.persona.name}, subagent of`
+                : "Subagent of"
+            }
+            {...(parentThreadLink.persona
+              ? {
+                  leading: (
+                    <PersonaFace
+                      seed={parentThreadLink.persona.faceSeed}
+                      className="size-3 shrink-0"
+                    />
+                  ),
+                }
+              : {})}
             detail={
               parentThreadLink.environmentLabel === undefined
                 ? parentThreadLink.title

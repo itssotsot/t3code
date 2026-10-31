@@ -12,6 +12,7 @@ import {
   type ScheduledTask,
   ScheduledTaskId,
   ProjectId,
+  PersonaId,
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderThreadId,
@@ -1627,6 +1628,271 @@ describe("OrchestratorMcpService provider resolution", () => {
         assert.equal(request.modelSelection.instanceId, altInstanceId);
       }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
     }),
+  );
+
+  const reviewerInstanceId = ProviderInstanceId.make("codex-reviewer");
+  const bot = (
+    name: string,
+    permissions: { canEditCode?: boolean; delegatesTo?: string[] | "all" } = {},
+  ) => ({
+    name,
+    responsibilities: `${name} things.`,
+    modelSelection: { instanceId: reviewerInstanceId, model: "gpt-5.5" },
+    faceSeed: `${name}-seed`,
+    canEditCode: permissions.canEditCode ?? true,
+    delegatesTo:
+      permissions.delegatesTo === "all"
+        ? ("all" as const)
+        : (permissions.delegatesTo ?? []).map((id) => PersonaId.make(id)),
+  });
+  // Runs `body` against a service whose settings hold `personas`, called from a thread that runs
+  // as `callerBot` when given; `dispatched` collects the delegation commands it sends.
+  const withBots = <A, E>(
+    personas: Record<string, ReturnType<typeof bot>>,
+    callerBot: string | null,
+    body: (
+      service: OrchestratorMcpService.OrchestratorMcpService["Service"],
+      dispatched: Ref.Ref<ReadonlyArray<unknown>>,
+    ) => Effect.Effect<A, E, never>,
+  ) =>
+    Effect.gen(function* () {
+      const dispatched = yield* Ref.make<ReadonlyArray<unknown>>([]);
+      const task = {
+        id: taskId,
+        threadId: parentThreadId,
+        runId: parentRunId,
+        parentNodeId,
+        origin: "app_owned",
+        createdBy: "agent",
+        driver: ProviderDriverKind.make("codex"),
+        providerInstanceId: reviewerInstanceId,
+        providerThreadId: null,
+        childThreadId,
+        nativeTaskRef: null,
+        prompt: "Review the diff.",
+        title: null,
+        model: "gpt-5.5",
+        status: "running",
+        result: null,
+        startedAt: null,
+        completedAt: null,
+      };
+      let delegated = false;
+      const caller = () => {
+        const projection = parentProjection(delegated ? [task] : []);
+        const callerConfig = callerBot === null ? undefined : personas[callerBot];
+        return callerConfig === undefined || callerBot === null
+          ? projection
+          : ({
+              ...projection,
+              thread: {
+                ...projection.thread,
+                persona: {
+                  personaId: PersonaId.make(callerBot),
+                  name: callerConfig.name,
+                  faceSeed: callerConfig.faceSeed,
+                },
+              },
+            } as OrchestrationV2ThreadProjection);
+      };
+      const layerDependencies = Layer.mergeAll(
+        NodeServices.layer,
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
+          hasReceipt: () => Effect.succeed(false),
+          getThreadRecords: (threadId) =>
+            Effect.succeed(threadId === parentThreadId ? caller() : childProjection),
+          isProviderInstanceEnabledForProject: () => Effect.succeed(true),
+          assertProviderInstanceEnabled: () => Effect.void,
+          dispatch: (command) =>
+            Ref.update(dispatched, (commands) => [...commands, command]).pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  delegated = true;
+                }),
+              ),
+              Effect.as({
+                sequence: 1,
+                storedEvents: [
+                  {
+                    sequence: 1,
+                    commandId: null,
+                    event: { type: "subagent.updated", payload: task },
+                  },
+                ],
+              } as never),
+            ),
+        }),
+        providerRegistryLayer([
+          providerSnapshot({
+            instanceId: codexInstanceId,
+            driver: ProviderDriverKind.make("codex"),
+            model: "gpt-5.4",
+          }),
+          providerSnapshot({
+            instanceId: reviewerInstanceId,
+            driver: ProviderDriverKind.make("codex"),
+            model: "gpt-5.5",
+          }),
+        ]),
+        adapterRegistryLayer([codexInstanceId, reviewerInstanceId]),
+        Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        ServerSettings.layerTest({
+          personas: Object.fromEntries(
+            Object.entries(personas).map(([id, config]) => [PersonaId.make(id), config]),
+          ),
+        }),
+      );
+      return yield* Effect.gen(function* () {
+        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+        return yield* body(service, dispatched);
+      }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
+    });
+
+  it.effect("delegates to a bot on its model with its identity and responsibilities", () =>
+    withBots({ reviewer: bot("Reviewer") }, null, (service, dispatched) =>
+      Effect.gen(function* () {
+        const capabilities = yield* service.capabilities(scope, {});
+        assert.deepEqual(
+          capabilities.bots?.map(({ botId, name, model }) => ({ botId, name, model })),
+          [{ botId: "reviewer", name: "Reviewer", model: "gpt-5.5" }],
+        );
+
+        yield* service.delegateTask(scope, {
+          task: "Review the diff.",
+          botId: PersonaId.make("reviewer"),
+          mode: "async",
+          clientRequestId: "delegate-bot-1",
+        });
+        const commands = yield* Ref.get(dispatched);
+        assert.equal(commands.length, 1);
+        const request = commands[0] as {
+          task: string;
+          runtimeMode: string;
+          modelSelection: { instanceId: string; model: string };
+          persona: unknown;
+        };
+        assert.equal(request.task, "Review the diff.");
+        assert.equal(request.runtimeMode, "full-access");
+        assert.equal(request.modelSelection.instanceId, reviewerInstanceId);
+        assert.equal(request.modelSelection.model, "gpt-5.5");
+        assert.deepEqual(request.persona, {
+          personaId: "reviewer",
+          name: "Reviewer",
+          faceSeed: "Reviewer-seed",
+          responsibilities: "Reviewer things.",
+          permissions: { canEditCode: true, delegatesTo: [] },
+        });
+
+        const unknown = yield* service
+          .delegateTask(scope, {
+            task: "Review the diff.",
+            botId: PersonaId.make("nobody"),
+            mode: "async",
+            clientRequestId: "delegate-bot-2",
+          })
+          .pipe(Effect.flip);
+        assert.equal(unknown.code, "invalid_request");
+        assert.equal((yield* Ref.get(dispatched)).length, 1);
+      }),
+    ),
+  );
+
+  it.effect("runs a read-only bot supervised", () =>
+    withBots({ reviewer: bot("Reviewer", { canEditCode: false }) }, null, (service, dispatched) =>
+      Effect.gen(function* () {
+        yield* service.delegateTask(scope, {
+          task: "Review the diff.",
+          botId: PersonaId.make("reviewer"),
+          mode: "async",
+          clientRequestId: "delegate-read-only-bot",
+        });
+        const [request] = (yield* Ref.get(dispatched)) as ReadonlyArray<{
+          runtimeMode: string;
+          persona: { permissions: { canEditCode: boolean } };
+        }>;
+        assert.equal(request?.runtimeMode, "approval-required");
+        assert.isFalse(request?.persona.permissions.canEditCode);
+      }),
+    ),
+  );
+
+  it.effect("lets a bot hand work only to the bots it lists, or to all others", () =>
+    withBots(
+      {
+        lead: bot("Lead", { delegatesTo: ["builder"] }),
+        builder: bot("Builder"),
+        reviewer: bot("Reviewer"),
+      },
+      "lead",
+      (service, dispatched) =>
+        Effect.gen(function* () {
+          const capabilities = yield* service.capabilities(scope, {});
+          assert.deepEqual(
+            capabilities.bots?.map(({ botId }) => botId),
+            ["builder"],
+          );
+
+          const unlisted = yield* service
+            .delegateTask(scope, {
+              task: "Review the diff.",
+              botId: PersonaId.make("reviewer"),
+              mode: "async",
+              clientRequestId: "lead-to-reviewer",
+            })
+            .pipe(Effect.flip);
+          assert.equal(unlisted.code, "invalid_request");
+          assert.include(unlisted.message, "Builder");
+
+          const generic = yield* service
+            .delegateTask(scope, {
+              task: "Review the diff.",
+              mode: "async",
+              clientRequestId: "lead-to-anyone",
+            })
+            .pipe(Effect.flip);
+          assert.equal(generic.code, "invalid_request");
+          assert.equal((yield* Ref.get(dispatched)).length, 0);
+
+          yield* service.delegateTask(scope, {
+            task: "Build it.",
+            botId: PersonaId.make("builder"),
+            mode: "async",
+            clientRequestId: "lead-to-builder",
+          });
+          assert.equal((yield* Ref.get(dispatched)).length, 1);
+        }),
+    ).pipe(
+      Effect.andThen(
+        withBots(
+          {
+            lead: bot("Lead", { delegatesTo: "all" }),
+            builder: bot("Builder"),
+            reviewer: bot("Reviewer"),
+          },
+          "lead",
+          (service) =>
+            Effect.gen(function* () {
+              const capabilities = yield* service.capabilities(scope, {});
+              assert.deepEqual(
+                capabilities.bots?.map(({ botId }) => botId),
+                ["builder", "reviewer"],
+              );
+              const self = yield* service
+                .delegateTask(scope, {
+                  task: "Plan it.",
+                  botId: PersonaId.make("lead"),
+                  mode: "async",
+                  clientRequestId: "lead-to-lead",
+                })
+                .pipe(Effect.flip);
+              assert.equal(self.code, "invalid_request");
+            }),
+        ),
+      ),
+    ),
   );
 
   it.effect(

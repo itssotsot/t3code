@@ -7,6 +7,7 @@ import {
   type EnvironmentId,
   type ModelSelection,
   ProviderInstanceId,
+  type ProviderOptionSelection,
   type ServerProvider,
   type ThreadId,
   ProviderInteractionMode,
@@ -142,7 +143,13 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   const onProviderModelSelect = (
     instanceId: ProviderInstanceId,
     model: string,
-    options?: { focusComposer?: boolean },
+    options?: {
+      focusComposer?: boolean;
+      /** Exact options (effort and friends) instead of the ones remembered for the model. */
+      modelOptions?: ReadonlyArray<ProviderOptionSelection>;
+      /** False leaves the sticky default for new threads alone, as an agent mention does. */
+      persistSticky?: boolean;
+    },
   ) => {
     if (!activeThread) return;
     const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
@@ -184,6 +191,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
       return;
     }
     const rememberedOptions =
+      options?.modelOptions ??
       useComposerDraftStore.getState().stickyOptionsByModelByProvider[instanceId]?.[resolvedModel];
     const nextModelSelection: ModelSelection =
       rememberedOptions !== undefined && rememberedOptions.length > 0
@@ -210,7 +218,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
       nextModelSelection,
       { explicit: true, replaceOptions: true },
     );
-    setStickyComposerModelSelection(nextModelSelection);
+    if (options?.persistSticky !== false) setStickyComposerModelSelection(nextModelSelection);
     if (options?.focusComposer !== false) scheduleComposerFocus();
   };
   const onProviderModelSelectStable = useStableCallback(onProviderModelSelect);

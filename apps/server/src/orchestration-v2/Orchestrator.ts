@@ -29,6 +29,7 @@ import {
   MessageId,
   type NodeId,
   type ModelSelection,
+  type OrchestrationMessageContext,
   OrchestrationV2Command,
   type OrchestrationV2InternalCommand,
   type OrchestrationV2LimitRecoveryUpdate,
@@ -72,6 +73,10 @@ import {
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
+import {
+  formatComposerContextReference,
+  personaContextRecord,
+} from "@t3tools/shared/composerContextReferences";
 import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
 import {
   derivePendingBackgroundWork,
@@ -432,6 +437,26 @@ export class OrchestratorV2 extends Context.Service<OrchestratorV2, Orchestrator
 ) {}
 
 /** Run ordinals can skip values: a queued run moves past newer runs when it starts. */
+/**
+ * A delegated child's first message. An agent's child opens with the agent's chip, whose record
+ * carries its responsibilities to the provider, so the task text stays clean for the title and
+ * the parent's rows.
+ */
+function delegatedTaskMessage(
+  command: Extract<OrchestrationV2Command, { readonly type: "delegated_task.request" }>,
+): { readonly text: string; readonly context?: OrchestrationMessageContext } {
+  if (command.persona === undefined) return { text: command.task };
+  const record = personaContextRecord(
+    command.persona.personaId,
+    command.persona,
+    command.persona.permissions,
+  );
+  return {
+    text: `${formatComposerContextReference(record)} ${command.task}`,
+    context: { version: 1, records: [record] },
+  };
+}
+
 function nextRunOrdinal(projection: Pick<OrchestrationV2ThreadProjection, "runs">): number {
   return projection.runs.reduce((max, run) => Math.max(max, run.ordinal), 0) + 1;
 }
@@ -7413,6 +7438,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(command.title === undefined ? {} : { title: command.title }),
         ordinal: (yield* subagentCount(command.parentThreadId)) + 1,
       });
+      const personaIdentity =
+        command.persona === undefined
+          ? undefined
+          : {
+              personaId: command.persona.personaId,
+              name: command.persona.name,
+              faceSeed: command.persona.faceSeed,
+            };
       const childThread: OrchestrationV2AppThread = {
         ...makeSubagentChildThread({
           parentThread: parentProjection.thread,
@@ -7429,6 +7462,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         runtimeMode: command.runtimeMode,
         interactionMode: command.interactionMode,
         ...(command.workspaceStrategy === undefined ? {} : { branch: null, worktreePath: null }),
+        ...(personaIdentity === undefined ? {} : { persona: personaIdentity }),
       };
       const task: OrchestrationV2Subagent = {
         id: taskNodeId,
@@ -7445,6 +7479,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         prompt: command.task,
         title: command.title ?? null,
         model: command.modelSelection.model,
+        ...(personaIdentity === undefined ? {} : { persona: personaIdentity }),
         ...(command.completionWake === undefined ? {} : { completionWake: command.completionWake }),
         status: "running",
         result: null,
@@ -7491,6 +7526,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         driver: targetAdapter.driver,
         providerInstanceId: command.modelSelection.instanceId,
         childThreadId,
+        ...(personaIdentity === undefined ? {} : { persona: personaIdentity }),
         prompt: command.task,
         result: null,
       };
@@ -7543,7 +7579,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         threadId: childThreadId,
         senderThreadId: command.parentThreadId,
         messageId: childMessageId,
-        text: command.task,
+        ...delegatedTaskMessage(command),
         attachments: [],
         modelSelection: command.modelSelection,
         dispatchMode:
@@ -7724,6 +7760,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       driver: task.driver,
       providerInstanceId: task.providerInstanceId,
       childThreadId: child.id,
+      ...(task.persona === undefined ? {} : { persona: task.persona }),
       prompt: command.text,
       result: null,
     };

@@ -7,6 +7,8 @@ import { View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
+import { personaFaceStateForStatus } from "@t3tools/shared/personaFace";
+import { PersonaFace } from "../../components/PersonaFace";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { cn } from "../../lib/cn";
 import { useEnvironmentServerConfig, useProject, useThreadShell } from "../../state/entities";
@@ -27,6 +29,7 @@ type SubagentRowSubagent = Pick<
   | "progress"
   | "result"
   | "remoteChild"
+  | "persona"
 >;
 
 export function SubagentRow(props: {
@@ -46,11 +49,22 @@ export function SubagentRow(props: {
       <View className="min-w-0 flex-1 gap-1">
         <View className="min-h-5 flex-row items-center gap-2">
           <View className="min-w-0 flex-1 flex-row items-baseline gap-1.5">
+            {props.subagent.persona !== undefined ? (
+              <View className="self-center">
+                <PersonaFace
+                  seed={props.subagent.persona.faceSeed}
+                  size={16}
+                  state={personaFaceStateForStatus(props.subagent.status)}
+                />
+              </View>
+            ) : null}
             <Text
               numberOfLines={1}
               className="min-w-0 shrink font-t3-medium text-sm text-foreground"
             >
-              {presentation.title}
+              {props.subagent.persona !== undefined
+                ? `${props.subagent.persona.name} · ${presentation.title}`
+                : presentation.title}
             </Text>
             <Text
               accessibilityElementsHidden

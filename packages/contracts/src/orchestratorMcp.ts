@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import { AuthMcpClientAccess } from "./auth.ts";
+import { PersonaId } from "./persona.ts";
 import {
   ContextTransferId,
   EnvironmentId,
@@ -167,6 +168,12 @@ export type OrchestratorMcpTerminalDelegatedTaskStatus =
 
 export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   task: OrchestratorMcpPrompt,
+  botId: Schema.optional(
+    PersonaId.annotate({
+      description:
+        "One of the user's bots from `orchestrator_capabilities` `bots`. The child runs on its model and effort with its responsibilities. `target` fields still override.",
+    }),
+  ),
   target: Schema.optional(OrchestratorMcpTarget),
   title: Schema.optional(OrchestratorMcpTitle),
   role: Schema.optional(OrchestratorMcpTaskRole),
@@ -636,6 +643,19 @@ export const OrchestratorMcpCapabilitiesResult = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   providers: Schema.Array(OrchestratorMcpProviderCapability),
+  /** The user's bots on this machine, for `delegate_task` `botId`. */
+  bots: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        botId: PersonaId,
+        name: Schema.String,
+        responsibilities: Schema.String,
+        providerInstanceId: ProviderInstanceId,
+        model: Schema.String,
+        options: Schema.optional(Schema.Array(ProviderOptionSelection)),
+      }),
+    ),
+  ),
   features: Schema.Struct({
     appOwnedSubagents: Schema.Boolean,
     asyncPolling: Schema.Boolean,

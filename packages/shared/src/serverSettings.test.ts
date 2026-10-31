@@ -1,5 +1,6 @@
 import {
   DEFAULT_SERVER_SETTINGS,
+  PersonaId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -603,6 +604,41 @@ describe("serverSettings helpers", () => {
 
     const removed = applyServerSettingsPatch(added, { secretProviders: { [personal]: null } });
     expect(Object.keys(removed.secretProviders)).toEqual([work]);
+  });
+
+  it("upserts, edits, and removes personas per entry so concurrent edits cannot clobber", () => {
+    const reviewer = PersonaId.make("reviewer");
+    const planner = PersonaId.make("planner");
+    const persona = (name: string) => ({
+      name,
+      responsibilities: `${name} things.`,
+      modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.5"),
+      faceSeed: `${name}-seed`,
+      canEditCode: true,
+      delegatesTo: [],
+    });
+    const current = applyServerSettingsPatch(
+      DEFAULT_SERVER_SETTINGS,
+      decodeServerSettingsPatch({ personas: { [reviewer]: persona("Reviewer") } }),
+    );
+
+    const added = applyServerSettingsPatch(
+      current,
+      decodeServerSettingsPatch({ personas: { [planner]: persona("Planner") } }),
+    );
+    expect(Object.keys(added.personas)).toEqual([reviewer, planner]);
+
+    const renamed = applyServerSettingsPatch(added, {
+      personas: { [planner]: { ...persona("Planner"), name: "Architect" } },
+    });
+    expect(renamed.personas[planner]?.name).toBe("Architect");
+    expect(renamed.personas[reviewer]).toEqual(added.personas[reviewer]);
+
+    const removed = applyServerSettingsPatch(
+      renamed,
+      decodeServerSettingsPatch({ personas: { [reviewer]: null } }),
+    );
+    expect(Object.keys(removed.personas)).toEqual([planner]);
   });
 
   it("replaces and removes individual usage prices without clobbering other models", () => {

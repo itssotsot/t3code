@@ -9,6 +9,8 @@ export function TimelineSystemDivider(props: {
   readonly detail?: ReactNode | null;
   readonly tone?: "neutral" | "danger";
   readonly icon?: LucideIcon;
+  /** Drawn instead of `icon`, for a leading mark that isn't a Lucide glyph. */
+  readonly leading?: ReactNode;
   readonly showDetailSeparator?: boolean;
   readonly actionLabel?: string;
   readonly onAction?: () => void;
@@ -16,7 +18,7 @@ export function TimelineSystemDivider(props: {
   const Icon = props.icon;
   const content = (
     <>
-      {Icon ? <Icon className="size-3 shrink-0" /> : null}
+      {props.leading ?? (Icon ? <Icon className="size-3 shrink-0" /> : null)}
       <span className="font-medium">{props.label}</span>
       {props.detail ? (
         <span

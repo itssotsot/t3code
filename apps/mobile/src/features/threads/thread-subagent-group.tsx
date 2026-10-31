@@ -13,6 +13,8 @@ import { Pressable, View, type ColorValue } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
+import { personaFaceStateForStatus } from "@t3tools/shared/personaFace";
+import { PersonaFace } from "../../components/PersonaFace";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { cn } from "../../lib/cn";
 import type { ThreadFeedActivity } from "../../lib/threadActivity";
@@ -43,11 +45,25 @@ function SubagentElapsed({ agents }: { readonly agents: ReadonlyArray<AgentTimin
 function SubagentAvatar(props: {
   readonly item: SubagentItem;
   readonly provider: ServerProvider | undefined;
+  /** The task's live status, which an agent's face shows. */
+  readonly status: OrchestrationV2Subagent["status"];
 }) {
   // A remote task's own driver is only a "remote" label.
   const driver =
     props.provider?.driver ??
     (props.item.remoteChild === undefined ? props.item.driver : undefined);
+  // An agent's child shows the agent's face instead of its provider.
+  if (props.item.persona !== undefined) {
+    return (
+      <View accessible={false} className="h-7 w-7 shrink-0">
+        <PersonaFace
+          seed={props.item.persona.faceSeed}
+          size={28}
+          state={personaFaceStateForStatus(props.status)}
+        />
+      </View>
+    );
+  }
   return (
     <View
       accessible={false}
@@ -95,7 +111,10 @@ export function ThreadSubagentGroup(props: {
     };
   });
   const grouped = agents.length > 1;
-  const label = `${agents.length} subagents`;
+  // A group of agents reads as the team that worked on it.
+  const label = agents.every((agent) => agent.item.persona !== undefined)
+    ? [...new Set(agents.map((agent) => agent.item.persona?.name))].join(", ")
+    : `${agents.length} subagents`;
   const summary = summarizeSubagentStatuses(agents.map((agent) => agent.status));
   const expanded = props.expandedRows[props.anchorKey] ?? false;
   const serverConfigs = useServerConfigs();
@@ -118,7 +137,11 @@ export function ThreadSubagentGroup(props: {
           <View className="flex-row items-center">
             {agents.slice(0, 3).map((agent, index) => (
               <View key={agent.item.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
-                <SubagentAvatar item={agent.item} provider={providerOf(agent.item)} />
+                <SubagentAvatar
+                  item={agent.item}
+                  provider={providerOf(agent.item)}
+                  status={agent.status}
+                />
               </View>
             ))}
             {agents.length > 3 ? (

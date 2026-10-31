@@ -5,6 +5,7 @@ import {
   EventId,
   NodeId,
   type OrchestrationV2DomainEvent,
+  PersonaId,
   PlanId,
   ProjectId,
   ProviderDriverKind,
@@ -18,6 +19,7 @@ import {
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
+import { personaContextRecord } from "@t3tools/shared/composerContextReferences";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -991,6 +993,98 @@ it.effect("keeps delegated child pull-request links independent of the parent", 
     const parentAfterChildLink = yield* projections.getThreadProjection(parentThreadId);
     assert.deepEqual(parentAfterChildLink.thread.linkedPullRequest, parentPullRequest);
     assert.deepEqual(parentAfterChildLink.thread.pullRequests, parent.thread.pullRequests);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("runs a delegated task as an agent, named on every record and briefed by its chip", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const parentThreadId = ThreadId.make("thread:persona-parent");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-persona-parent"),
+      threadId: parentThreadId,
+      projectId: ProjectId.make("project:persona"),
+      title: "Parent",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("start-persona-parent"),
+      threadId: parentThreadId,
+      messageId: MessageId.make("message:persona-parent"),
+      text: "Have the reviewer look",
+      attachments: [],
+      dispatchMode: { type: "start_immediately" },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const parentRun = (yield* projections.getThreadProjection(parentThreadId)).runs[0]!;
+    const identity = {
+      personaId: PersonaId.make("reviewer"),
+      name: "Reviewer",
+      faceSeed: "reviewer-seed",
+    };
+    yield* orchestrator.dispatch({
+      type: "delegated_task.request",
+      commandId: CommandId.make("delegate-persona-task"),
+      parentThreadId,
+      parentRunId: parentRun.id,
+      parentNodeId: parentRun.rootNodeId!,
+      task: "Review the changes",
+      modelSelection,
+      persona: { ...identity, responsibilities: "Finds correctness bugs." },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      createdBy: "agent",
+      creationSource: "mcp",
+    });
+
+    const parent = yield* projections.getThreadProjection(parentThreadId);
+    const task = parent.subagents[0]!;
+    assert.deepEqual(task.persona, identity);
+    assert.equal(task.prompt, "Review the changes");
+    const turnItem = parent.turnItems.find((item) => item.type === "subagent");
+    assert.deepEqual(turnItem?.type === "subagent" ? turnItem.persona : undefined, identity);
+
+    const child = yield* projections.getThreadProjection(task.childThreadId!);
+    assert.deepEqual(child.thread.persona, identity);
+    assert.notInclude(child.thread.title, "Finds correctness bugs.");
+    const opening = child.messages[0]!;
+    assert.isTrue(opening.text.startsWith("[Reviewer](t3-context://v1/persona/persona_reviewer) "));
+    assert.deepEqual(opening.context?.records, [
+      personaContextRecord(identity.personaId, {
+        ...identity,
+        responsibilities: "Finds correctness bugs.",
+      }),
+    ]);
+
+    // A plain task the agent delegates runs as itself, not as the agent.
+    const childRun = child.runs[0]!;
+    yield* orchestrator.dispatch({
+      type: "delegated_task.request",
+      commandId: CommandId.make("delegate-from-persona"),
+      parentThreadId: child.thread.id,
+      parentRunId: childRun.id,
+      parentNodeId: childRun.rootNodeId!,
+      task: "Check one file",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      createdBy: "agent",
+      creationSource: "mcp",
+    });
+    const grandchildTask = (yield* projections.getThreadProjection(child.thread.id)).subagents[0]!;
+    assert.isUndefined(grandchildTask.persona);
+    const grandchild = yield* projections.getThreadProjection(grandchildTask.childThreadId!);
+    assert.isUndefined(grandchild.thread.persona);
   }).pipe(Effect.provide(layerTest)),
 );
 

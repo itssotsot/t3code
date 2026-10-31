@@ -6,6 +6,7 @@ import type {
   ProviderDriverKind,
   ProviderInstanceId,
   OrchestrationV2Subagent,
+  PersonaIdentity,
 } from "@t3tools/contracts";
 import {
   resolveSubagentMetadata,
@@ -27,11 +28,14 @@ import {
 import { ThreadHoverCard } from "../ThreadHoverCard";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+import { PersonaFace } from "../PersonaFace";
 import { cn } from "~/lib/utils";
 import { deriveProviderInstanceEntries, shouldShowInstanceBadge } from "../../providerInstances";
 
 export function SubagentTooltipContent(props: {
   title: string;
+  /** The agent the task runs as, shown above its model. */
+  persona?: PersonaIdentity | undefined;
   model: string | null;
   providerInstanceId: ProviderInstanceId;
   origin: OrchestrationV2Subagent["origin"];
@@ -120,6 +124,12 @@ export function SubagentTooltipContent(props: {
         : CircleDashedIcon;
   return (
     <ThreadHoverCard title={props.title}>
+      {props.persona !== undefined ? (
+        <div className="flex min-w-0 items-center gap-2 font-medium text-foreground">
+          <PersonaFace seed={props.persona.faceSeed} className="size-3 shrink-0" />
+          <span className="min-w-0 truncate">{props.persona.name}</span>
+        </div>
+      ) : null}
       <div className="flex min-w-0 items-center gap-2">
         {driver ? (
           <ProviderInstanceIcon

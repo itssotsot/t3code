@@ -114,6 +114,34 @@ returns to the remembered selection.
 
 Leaving reasoning level or service tier unset uses the provider's own configuration.
 
+## Bots
+
+Bots are named helpers with their own model, effort, and responsibilities, such as a Reviewer
+on a strong model or a quick Scribe for docs. Add and edit them in **Settings → Bots**; each
+environment keeps its own bots, so every client connected to it sees the same ones. Each bot
+gets a generated face, and **New face** rolls another.
+
+On web and desktop, type `@` and pick a bot to hand it the turn. The composer switches to the
+bot's model and effort, and the bot answers with its responsibilities as instructions. The
+switch applies to the thread from then on, like picking a model yourself, and doesn't change the
+model new threads start with. A sent message keeps the bot as it was when you sent it, so
+editing or removing a bot later doesn't change past messages. Mobile shows bot mentions in
+messages but can't add them yet.
+
+Bots can also hand work to each other. When the agent in a thread delegates a task, it can
+pick one of your bots by name, and the task runs as that bot: its model, its effort, and its
+responsibilities. The task shows the bot's face and name in the thread, in thread details, and
+in the task's own thread, and the face shows whether the bot is working, waiting on you, done,
+or stuck. To have one bot run the whole team, create a lead whose responsibilities say who to
+hand what to, then mention it. Bots only delegate to bots on their own machine.
+
+Each bot has two permissions. Uncheck **Can edit code** to make a bot read-only: it's told not
+to edit, and it runs in Supervised, so any change waits for your approval. Picking a read-only
+bot with `@` switches the thread to Supervised. **Can hand work to** lists the bots it may
+delegate to; with none, it works alone, and **All bots** includes bots you add later. A bot
+running as a delegated task can't hand work to anyone off its list. When you mention a bot in
+chat, it's told the same rules. **Settings → Bots** maps who hands work to whom.
+
 ## Quote an assistant response
 
 On web and desktop, select text within one assistant response and choose

@@ -25,6 +25,7 @@ export type SettingsPath =
   | "/settings/keybindings"
   | "/settings/snap-shot"
   | "/settings/providers"
+  | "/settings/bots"
   | "/settings/threads"
   | "/settings/browser"
   | "/settings/devices"
@@ -95,6 +96,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/keybindings": "Keybindings",
   "/settings/snap-shot": "SnapShots",
   "/settings/providers": "Providers",
+  "/settings/bots": "Bots",
   "/settings/threads": "Threads",
   "/settings/browser": "Browser",
   "/settings/devices": "Devices",
@@ -130,6 +132,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     heading: "Agents",
     paths: [
       "/settings/providers",
+      "/settings/bots",
       "/settings/threads",
       "/settings/browser",
       "/settings/devices",
@@ -1168,6 +1171,25 @@ export const SETTINGS_SEARCH_ITEMS = [
     secretsFeatureOnly: true,
   },
   {
+    id: "bots",
+    title: "Bots",
+    to: "/settings/bots",
+    searchTerms: ["agents personas mention @ model effort responsibilities roles face team"],
+  },
+  {
+    id: "bots-add",
+    title: "Add bot",
+    to: "/settings/bots",
+    targetId: "bots",
+    searchTerms: ["new agent persona create role"],
+  },
+  {
+    id: "bots-team",
+    title: "Who hands work to whom",
+    to: "/settings/bots",
+    searchTerms: ["team map graph delegation delegate lead hand work bots agents"],
+  },
+  {
     id: "archive",
     title: "Archived threads",
     to: "/settings/archived",
@@ -1189,6 +1211,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/snap-shot": null,
   "/settings/keybindings": null,
   "/settings/providers": null,
+  "/settings/bots": null,
   "/settings/threads": null,
   "/settings/browser": null,
   "/settings/devices": null,

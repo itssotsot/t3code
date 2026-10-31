@@ -11,6 +11,12 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { GUEST_MESSAGE_MAX_LENGTH, GUEST_NAME_MAX_LENGTH } from "./guestShare.ts";
+import {
+  PersonaFaceSeed,
+  PersonaId,
+  PersonaPermissions,
+  PersonaResponsibilities,
+} from "./persona.ts";
 
 /** Image and file records reference `ChatAttachment` ids, never bytes. */
 
@@ -25,6 +31,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "skill",
   "thread",
   "environment",
+  "persona",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -224,6 +231,21 @@ export const EnvironmentContextRecord = Schema.Struct({
 });
 export type EnvironmentContextRecord = typeof EnvironmentContextRecord.Type;
 
+/**
+ * A mentioned persona. Name, responsibilities, and face are snapshots taken at send time, so a
+ * sent message keeps meaning what it meant after the persona is edited or deleted.
+ */
+export const PersonaContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("persona"),
+  personaId: PersonaId,
+  responsibilities: PersonaResponsibilities,
+  faceSeed: PersonaFaceSeed,
+  /** Absent on messages sent before permissions existed; those set no limits. */
+  permissions: Schema.optionalKey(PersonaPermissions),
+});
+export type PersonaContextRecord = typeof PersonaContextRecord.Type;
+
 const isJson = Schema.is(Schema.Json);
 
 /** Excludes known discriminators so malformed known records fail their own schema. */
@@ -255,6 +277,7 @@ export const KnownComposerContextRecord = Schema.Union([
   SkillContextRecord,
   ThreadContextRecord,
   EnvironmentContextRecord,
+  PersonaContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 
